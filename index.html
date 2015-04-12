@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+    body {
+        margin: 0;
+    }
+    
+    path {
+        fill: none;
+        stroke: #000000;
+        stroke-linejoin: round;
+        stroke-linecap: round;
+    }
+    
+    .park {
+        stroke: #ccff66;
+        fill: #ccff66;
+    }
+    
+    circle {
+        fill: steelblue;
+        stroke: #fff;
+        stroke-width: 3px;
+    }
+    
+    circle.bus {
+        fill: orange;
+        stroke-width: 0;
+    }
+    
+    text {
+        font: 20px sans-serif;
+        pointer-events: none;
+    }
+    
+    .route {
+        stroke: #3838cc;
+        stroke-width: 2.0px;
+    }
+    
+    .info {
+        fill: orange;
+    }
+    
+    .major_road {
+        stroke: #776;
+        stroke-width: 2.0px;
+    }
+    
+    .minor_road {
+        stroke: #ccb;
+    }
+    
+    .highway {
+        stroke: #ccb;
+        stroke-width: 2.0px;
+    }
+    
+    .busroute {
+        stroke: #3ecef0;
+        stroke-width: 3.0px;
+    }
+    
+    .tooltip1 {
+        position: absolute;
+        text-align: center;
+        width: 60px;
+        height: 10px;
+        padding: 2px;
+        font: 12px Serif;
+        background: #fcc867;
+        border: 0px;
+        border-radius: 8px;
+        pointer-events: none;
+    }
+    
+    .tooltip2 {
+        position: absolute;
+        text-align: center;
+        width: 160px;
+        height: 10px;
+        padding: 2px;
+        font: 12px sans-serif;
+        background: #4ce1ed;
+        border: 1px;
+        border-radius: 8px;
+        pointer-events: none;
+    }
+</style>
+
+<body>
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    <script src="http://d3js.org/d3.geo.tile.v0.min.js"></script>
+    <script>
+        var width = 1000,
+            height = 500;
+
+        // tiler returns tiles     
+        var tiler = d3.geo.tile()
+            .size([width, height]);
+
+        var s = (1 << 22) / 2 / Math.PI; // Los Angeles
+        var projection = d3.geo.mercator()
+            .center([-118.2653, 34.0178]) // Los Angeles
+            .scale(s)
+            .translate([width / 2, height / 2]);
+
+        //append div for tooltip
+        var divBus = d3.select("body").append("div")
+            .attr("class", "tooltip1")
+            .style("opacity", 0);
+
+        var divStop = d3.select("body").append("div")
+            .attr("class", "tooltip2")
+            .style("opacity", 0);
+
+        var path = d3.geo.path()
+            .projection(projection);
+        
+        var svg = d3.select("body").append("svg")
+        .style("background-color", "#F8F8F8")
+    .attr("width", width)
+    .attr("height", height);
+        
+        var layer1 = svg.append("g");
+        var layer2 = svg.append("g");
+
+
+       
+
+        // draw combined map layers
+    
+
+d3.json("upc.json", function(json) {
+    layer1.selectAll("path")
+	   .data(json.features)
+	   .enter() 
+	   .append("path")
+       .attr("class", function(d) { 
+           return d.properties.kind; 
+       })
+	   .attr("d", path);
+});
+
+        layer1.append('text')
+            .attr('class', 'info')
+            .attr('x', '20')
+            .attr('y', '20')
+            .text('Community Route King East');
+
+
+
+
+        //show the route
+        d3.csv("route.csv", function (data) {
+            routedata = data.map(function (d) {
+                return [+d["lat"], +d["long"]];
+            });
+            var line = d3.svg.line()
+                .x(function (d) {
+                    return projection([d[1], d[0]])[0];
+                })
+                .y(function (d) {
+                    return projection([d[1], d[0]])[1];
+                })
+                .interpolate("linear");
+            var busroute = layer2.append('g').append('path')
+                .attr("d", line(routedata))
+                .attr("class", "busroute");
+            // show the buses
+            var bus = layer2.append("circle")
+                .attr("r", 13)
+                .attr("class", "bus")
+                .on("mouseover", function (d) {
+                    divBus.transition()
+                        .duration(900)
+                        .style("opacity", .9);
+
+                    divBus.html(function () {
+                            var status = Math.random() * 3;
+                            if (status <= 1) {
+                                return "LATE"
+                            } else if (status <= 2) {
+                                return "ON TIME"
+                            } else {
+                                return "AHEAD"
+                            }
+                        })
+                        .style("left", (d3.event.pageX) + "px")
+                        .style("top", (d3.event.pageY - 18) + "px");
+                })
+                .on("mouseout", function (d) {
+                    divBus.transition()
+                        .duration(500)
+                        .style("opacity", 0);
+                });
+
+            transition();
+
+            function transition() {
+                    bus.transition()
+                        .duration(30000)
+                        .ease("linear")
+                        .attrTween("transform", translateAlong(busroute.node()))
+                        .each("end", transition);
+                }
+                // Returns an attrTween for translating along the specified path element.
+            function translateAlong(path) {
+                var l = path.getTotalLength();
+                return function (d, i, a) {
+                    return function (t) {
+                        var p = path.getPointAtLength(t * l);
+                        return "translate(" + p.x + "," + p.y + ")";
+                    };
+                };
+            }
+
+        });
+
+        // show the stops
+        d3.csv("stops.csv", function (data) {
+            layer2.append('g')
+                .selectAll("circle")
+                .data(data)
+                .enter()
+                .append("circle")
+                .attr("class", "stop")
+                .attr("r", 6)
+                .attr("cx", function (d) {
+                    return projection([d.long, d.lat])[0];
+
+                })
+                .attr("cy", function (d) {
+                    return projection([d.long, d.lat])[1];
+                })
+                .on("mouseover", function (d) {
+                    divStop.transition()
+                        .duration(900)
+                        .style("opacity", .9);
+
+                    divStop.html(d.stop)
+                        .style("left", (d3.event.pageX) + "px")
+                        .style("top", (d3.event.pageY - 28) + "px");
+                })
+                .on("mouseout", function (d) {
+                    divStop.transition()
+                        .duration(500)
+                        .style("opacity", 0);
+                });
+        });
+
+
+        // Show current coordinates:
+        svg.append('text')
+            .attr('id', 'pos')
+            .attr('x', '20')
+            .attr('y', '490');
+
+        d3.select("svg").on('mousemove', function () {
+            var pos = projection.invert(d3.mouse(this));
+            var format = d3.format('.5f');
+            // console.log(pos);
+            d3.select('#pos').text('lat: ' + format(pos[1]) + ' long: ' + format(pos[0]));
+        });
+    </script>
+</body>
+
+</html>
